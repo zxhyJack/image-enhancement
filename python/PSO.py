@@ -69,6 +69,6 @@ if __name__ == "__main__":
     def calc_fitness(x):
         return np.sum(np.square(x), axis=1)
 
-    pso = PSO(100, 100, dim=2, x_bound=[-10, 10], calculate_fitness=calc_fitness)
+    pso = PSO(100, 100, dim=2, x_bound=[-10, 10], calc_fitness=calc_fitness)
     pso.run()
     plt.show()

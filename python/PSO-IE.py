@@ -104,7 +104,7 @@ def customize_transform(img, a, b, c, k, kernel_size):
 def ok_transform(img, a, b, c, k, k_size):
     new_img = copy.deepcopy(img).astype(np.double)
     D = np.mean(new_img)
-    M = cv2.blur(new_img, (3, 3))
+    M = cv2.blur(new_img, (k_size, k_size))
     S = window_stdev(new_img, k_size)
     # S = generic_filter(new_img, np.std, size=k_size)
     new_img = k * D / (S + b) * (new_img - c * M) + np.power(M, a)
@@ -148,62 +148,94 @@ def calc_fitness(img):
     absy = cv2.convertScaleAbs(sobelY)
     sobel = cv2.addWeighted(absx, 0.5, absy, 0.5, 0)
     ret, threshold = cv2.threshold(
-        img, 100, 255, cv2.THRESH_BINARY_INV
+        sobel, 100, 255, cv2.THRESH_BINARY_INV
     )  # 转化为二值化图像，图像阈值为100
     n_edgels = len(threshold[threshold == 255])  # 二值化图像大于阈值的像素个数
     entropy = calc_entropy(img)
+    print('E:', E)
     return math.log(math.log(E)) * n_edgels / (rows * cols) * entropy
 
 
-def PSOIE(popu_size, max_iter, dim, img, calc_fitness, k_size, w=0.6, c1=2, c2=2):
+def PSOIE(popu_size, max_iter, dim, img, calc_fitness, k_size, wmax=0.9, wmin=0.4 ,c1=2, c2=2):
     X = np.array(generate_population(popu_size))  # 初始化粒子群位置
     V = np.random.rand(popu_size, dim)  # 初始化粒子群速度
-    pbest = X  # 初始化个体最优位置
-    print("===============初始化适应度===============")
-    fitness = np.array(
-        [calc_fitness(ok_transform(img, x[0], x[1], x[2], x[3], k_size)) for x in pbest]
-    )
-    print("===============适应度初始化完成===============")
-    print(fitness)
+    pbest = X.copy()
+    
+    # 初始化个体最优位置
+    print("====================初始化适应度====================")
+    fitness = [calc_fitness(ok_transform(img, x[0], x[1], x[2], x[3], k_size)) for x in X]
+    print("====================适应度初始化完成====================")
+    print("fitness", fitness)
     gbest = X[np.argmax(fitness)]  # 初始化全局最优位置
-    print("gbest:", gbest)
-    print("================开始迭代===============")
+    gbest_history = [gbest.tolist()]
+    print("====================开始迭代====================")
     figure_count = 0
     for iter in range(max_iter):
-        print("第========{}========次迭代".format(iter))
+        print("====================第{}次迭代====================".format(iter))
+        w = wmax -(wmax - wmin) * iter / max_iter
+        # w = 0.6
         for i in range(popu_size):
-            print("第{}个粒子".format(i))
+            # print("第{}个粒子".format(i))
+            print('X[{}]'.format(i), X[i])
             out = ok_transform(img, X[i][0], X[i][1], X[i][2], X[i][3], k_size)
             figure_count = figure_count + 1
             # cv2.imshow('Figure.{}'.format(figure_count), out)
-            cv2.imwrite("result/cameraman/figure{}.png".format(figure_count), out)
+            cv2.imwrite("result/pout/figure{}.tif".format(figure_count), out)
             new_fitness = calc_fitness(out)
             if new_fitness > fitness[i]:
-                pbest[i] = X[i]
+                pbest[i] = X[i].copy()
                 fitness[i] = new_fitness
             if new_fitness > np.max(fitness):
-                gbest = X[i]
-            print("pbest: ", pbest[i])
-        print("gbest: ", gbest)
-        r1 = np.random.rand(popu_size, dim)
-        r2 = np.random.rand(popu_size, dim)
-        # 更新速度和权重
-        V = w * V + c1 * r1 * (pbest - X) + c2 * r2 * (gbest - X)
-        X = X + V
-        print("更新后粒子的位置：")
-        print(X)
-        # print("更新后粒子的速度：")
-        # print(V)
-    return gbest
+                gbest = X[i].copy()
+            # print("pbest: {}".format(pbest[i]))
+             # print("gbest: ", gbest)
+            r1 = np.random.rand()
+            r2 = np.random.rand()
+            # 更新速度和权重
+            V[i] = w * V[i] + c1 * r1 * (pbest[i] - X[i]) + c2 * r2 * (gbest - X[i])
+            X[i] = X[i] + V[i]
+            print("更新后粒子的位置：")
+            print(X[i])
+            # 粒子位置的约束
+            X[i, 0] = np.clip(X[i, 0], 0, 1.5)
+            X[i, 1] = np.clip(X[i, 1], 0, 0.5)
+            X[i, 2] = np.clip(X[i, 2], 0, 1)
+            X[i, 3] = np.clip(X[i, 3], 0.5, 1.5)
+            # print("修改范围后粒子的位置：")
+            # print(X[i])
+        # r1 = np.random.rand()
+        # r2 = np.random.rand()
+        # # 更新速度和权重
+        # V = w * V + c1 * r1 * (pbest - X) + c2 * r2 * (gbest - X)
+        # X = X + V
+        # print("更新后粒子的位置：")
+        # print(X[i])
+        # # 粒子位置的约束
+        # X[:, 0] = np.clip(X[:, 0], 0, 1.5)
+        # X[:, 1] = np.clip(X[:, 1], 0, 0.5)
+        # X[:, 2] = np.clip(X[:, 2], 0, 1)
+        # X[:, 3] = np.clip(X[:, 3], 0.5, 1.5)
+        # print("修改范围后粒子的位置：")
+        # print(X[i])
+
+        gbest_history.append(gbest.tolist())
+        
+    print('history of gbest:')
+    for gbest in gbest_history:
+        print(gbest)
+    return gbest, out
 
 
 # 读入原始图像
-img = cv2.imread("./imageData/cameraman.tif", 0)
-PSOIE(popu_size, max_iter, dim, img, calc_fitness, kernel_size)
+img = cv2.imread("../images/pout.tif", 0)
+[gbest, out] = PSOIE(popu_size, max_iter, dim, img, calc_fitness, kernel_size)
 
-# 通过窗口展示图片 第一个参数为窗口名 第二个为读取的图片变量
+# x = [0.44086013, 0.84740079, 1.54384275, 0.91960488]
+# out = ok_transform(img,x[0],x[1], x[2],x[3], kernel_size)
+# print(out[:10,:10])
+
 # cv2.imshow("img", img)
+# cv2.imshow('out', out)
 
-
-# cv2.waitKey(0)
+cv2.waitKey(0)
 # cv2.destroyAllWindows()
